@@ -67,7 +67,7 @@ class MyModel(nn.Module):
 model = MyModel()
 loss_function = nn.L1Loss() # Defining the mean squared equation loss function
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001) # Defining the learning step and choosing an optimiser for running
-NUM_EPOCHS = 60
+NUM_EPOCHS = 20
 loss_train = []
 loss_test = []
  
@@ -75,13 +75,14 @@ loss_test = []
 Dataloader = DataLoader(dataObject, batch_size=45, shuffle=True)
 
 # TRAINING LOOP
-for i in Dataloader:
-    pred = model(i[0]).squeeze(1)
-    loss = loss_function(pred, i[1])
-    loss_train.append(loss.item())
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
+for i in range(NUM_EPOCHS+1):
+    for i in Dataloader:
+        pred = model(i[0]).squeeze(1)
+        loss = loss_function(pred, i[1])
+        loss_train.append(loss.item())
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
 
 # TESTING LOOP
 for i in Dataloader:

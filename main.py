@@ -3,40 +3,46 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
+import random
+from torch.utils.data import Dataset, DataLoader
+
+### DATA CLEANING, BATCHING AND SCALING ###
+# Data Class
+class DataLoaders(Dataset):
+
+    def __init__(self,file):
+        
+        # Data cleaning
+        file = file.dropna(ignore_index=True)
+        file = file.drop_duplicates(ignore_index=True)
+        file['ocean_proximity'] = file['ocean_proximity'].str.upper()
+        file = pd.get_dummies(file, columns=['ocean_proximity'])
+        new_order = ['longitude', 'latitude', 'housing_median_age', 'total_rooms',
+    'total_bedrooms', 'population', 'households', 'median_income',
+    'ocean_proximity_<1H OCEAN', 'ocean_proximity_INLAND', 'ocean_proximity_ISLAND',
+    'ocean_proximity_NEAR BAY', 'ocean_proximity_NEAR OCEAN',
+    'median_house_value']
+        file = file[new_order]
+
+        # Converting data types
+        self.data = file.to_numpy(dtype="float")
+        self.data = torch.tensor(self.data, dtype=torch.float)
+
+        # defining output
+        self.outputs = self.data[:,13]
+        self.inputs = self.data[:,0:13]
 
 
+    def __getitem__(self, idx):
+        return self.inputs[idx], self.outputs[idx]
+
+    def __len__(self):
+        return len(self.data)
 
 file = pd.read_csv("housing_dataset.csv")
+dataObject = DataLoaders(file)
 
-# Cleanes the data
-print(file.info())
-file = file.dropna(ignore_index=True)
-file = file.drop_duplicates(ignore_index=True)
-file['ocean_proximity'] = file['ocean_proximity'].str.upper()
-file = pd.get_dummies(file, columns=['ocean_proximity'])
-print(file.info())
-file.to_csv("cleaned_houses.csv")
-inputs = file.drop(columns="median_house_value")
-
-num = file.to_numpy(dtype="float")
-innum = inputs.to_numpy(dtype="float")
-
-scaler = StandardScaler()
-num = scaler.fit_transform(num)
-innum = scaler.fit_transform(innum)
-
-data = torch.tensor(num, dtype=torch.float)
-inputse = torch.tensor(innum, dtype=torch.float)
-
-#Training Data
-train_inputs = inputse[:5000,:]
-train_outputs = data[:5000,8]
-#Test Data
-test_inputs = inputse[5001,:].unsqueeze(0)
-test_outputs = data[5001, 8].unsqueeze(0)
-#### END DATASSET CODE ####
+#### AI MODEL ####
 
 # Class for model defination
 class MyModel(nn.Module):
@@ -49,48 +55,39 @@ class MyModel(nn.Module):
         self.layer3 = nn.Linear(10,1)
         self.activation = nn.ReLU()
 
-
     def forward(self, input):
-        # passing input through layers and activations and return it
         partial = self.layer1(input)
         partial = self.activation(partial)
         partial = self.layer2(partial)
         partial = self.activation(partial)
         output = self.layer3(partial)
-
         return output
 
-# create the model, loss function, and optimizer
+# Hyperparameters
 model = MyModel()
 loss_function = nn.L1Loss() # Defining the mean squared equation loss function
-optimizer = torch.optim.Adam(model.parameters(),lr=0.001) # Defing the learning step and choosing an optimiser for running
-
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001) # Defining the learning step and choosing an optimiser for running
 NUM_EPOCHS = 60
-ls = []
+loss_train = []
+loss_test = []
+ 
+# Batching data for loops
+Dataloader = DataLoader(dataObject, batch_size=45, shuffle=True)
 
-# training loop
-print("\nTRAINING:\n") 
-for i in range(NUM_EPOCHS):
-    pred = model(train_inputs)
-    loss = loss_function(pred.squeeze(1), train_outputs)
-    ls.append(loss.item())
-    print(loss.item())
+# TRAINING LOOP
+for i in Dataloader:
+    pred = model(i[0]).squeeze(1)
+    loss = loss_function(pred, i[1])
+    loss_train.append(loss.item())
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()
 
-# calculate testing loss
-print("\nTESTING:\n")
-with torch.no_grad():
-    # make a prediction from the TEST inputs, and score it with the loss function
-    pred = model(test_inputs)
-    loss = loss_function(pred.squeeze(1), test_outputs) 
-    ls.append(loss.item())
-    print(loss.item())
+# TESTING LOOP
+for i in Dataloader:
+    if random.choice([True, False]):
+        pred = model(i[0]).squeeze(1)
+        loss = loss_function(pred, i[1])
+        loss_test.append(loss.item())
 
-torch.save(model.state_dict(),"Model.pt")
-
-#Ploting 
-plt.plot(ls, 'ro', label='MAE Error')
-plt.scatter(len(ls)-1, ls[-1], color='blue', s=100, label='Testing Loss')
-# plt.show()
+torch.save(model.state_dict(), "Model.pt")
